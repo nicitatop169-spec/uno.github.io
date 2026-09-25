@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Space Station Endless Runner</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            overflow: hidden;
+            background-color: #050510;
+            font-family: 'Orbitron', sans-serif;
+            color: #ffffff;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff;
+        }
+
+        .score-display {
+            font-size: 2rem;
+            font-weight: 900;
+            color: #00ffff;
+        }
+
+        .speed-display {
+            font-size: 1.2rem;
+            color: #ff0055;
+            text-shadow: 0 0 10px #ff0055;
+        }
+
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(5, 5, 16, 0.85);
+            backdrop-filter: blur(5px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            pointer-events: auto;
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none !important;
+        }
+
+        h1 {
+            font-size: 4rem;
+            font-weight: 900;
+            color: #00ffff;
+            text-shadow: 0 0 20px #00ffff, 0 0 40px #0088ff;
+            margin-bottom: 10px;
+            text-align: center;
+            letter-spacing: 4px;
+        }
+
+        h2 {
+            font-size: 2.5rem;
+            color: #ff0055;
+            text-shadow: 0 0 20px #ff0055;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            background: transparent;
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3), inset 0 0 15px rgba(0, 255, 255, 0.1);
+            transition: all 0.2s ease;
+            margin-top: 20px;
+        }
+
+        .btn:hover {
+            background: #00ffff;
+            color: #050510;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.8), inset 0 0 30px rgba(0, 255, 255, 0.2);
+        }
+
+        .controls-hint {
+            margin-top: 30px;
+            font-size: 1rem;
+            color: #8899aa;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        .key {
+            display: inline-block;
+            border: 1px solid #00ffff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            color: #00ffff;
+            margin: 0 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="hud-top">
+            <div class="score-display">SCORE: <span id="score">0</span></div>
+            <div class="speed-display">SPEED: <span id="speed">0</span> KM/H</div>
+        </div>
+    </div>
+
+    <div id="start-screen">
+        <h1>NEON RUNNER</h1>
+        <p style="color: #8899aa; font-size: 1.2rem; margin-bottom: 20px;">КОСМОСТАНЦИЯ "ОМЕГА"</p>
+        <button class="btn" id="start-btn">ЗАПУСК</button>
+        <div class="controls-hint">
+            <span class="key">←</span> <span class="key">→</span> или <span class="key">A</span> <span class="key">D</span> для смены полосы<br>
+            <span class="key">ПРОБЕЛ</span> или <span class="key">↑</span> для прыжка
+        </div>
+    </div>
+
+    <div id="game-over-screen" class="hidden">
+        <h2>КРИТИЧЕСКИЙ СБОЙ</h2>
+        <div class="score-display" style="margin-bottom: 20px;">ФИНАЛЬНЫЙ СЧЕТ: <span id="final-score">0</span></div>
+        <button class="btn" id="restart-btn">ПЕРЕЗАГРУЗКА</button>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // --- КОНФИГУРАЦИЯ ---
+        const CONFIG = {
+            laneWidth: 3.5,
+            lanes: [-1, 0, 1],
+            baseSpeed: 15,
+            maxSpeed: 40,
+            acceleration: 0.5,
+            jumpForce: 0.35,
+            gravity: 0.018,
+            chunkLength: 60,
+            fogColor: 0x050510,
+            playerModelPath: 'player_game.glb'
+        };
+
+        // --- СОСТОЯНИЕ ИГРЫ ---
+        const state = {
+            isPlaying: false,
+            score: 0,
+            speed: CONFIG.baseSpeed,
+            lane: 0, // -1, 0, 1
+            targetX: 0,
+            playerY: 0,
+            playerBaseY: 0,
+            velocityY: 0,
+            isJumping: false,
+            distance: 0,
+            chunks: [],
+            obstacles: [],
+            coins: [],
+            particles: []
+        };
+
+        // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
+        let scene, camera, renderer, clock;
+        let playerModel, playerBox;
+        let starField;
+        
+        // Материалы (переиспользуемые для оптимизации)
+        const materials = {
+            metalDark: new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.4, metalness: 0.8 }),
+            metalLight: new THREE.MeshStandardMaterial({ color: 0x556677, roughness: 0.3, metalness: 0.9 }),
+            emissiveBlue: new THREE.MeshStandardMaterial({ color: 0x001133, emissive: 0x00ffff, emissiveIntensity: 2.0, roughness: 0.2, metalness: 0.5 }),
+            emissiveRed: new THREE.MeshStandardMaterial({ color: 0x330000, emissive: 0xff0055, emissiveIntensity: 2.0, roughness: 0.2, metalness: 0.5 }),
+            emissiveGreen: new THREE.MeshStandardMaterial({ color: 0x002200, emissive: 0x00ff44, emissiveIntensity: 1.5, roughness: 0.5, metalness: 0.3 }),
+            coin: new THREE.MeshStandardMaterial({ color: 0x004455, emissive: 0x00ffff, emissiveIntensity: 3.0, roughness: 0.1, metalness: 1.0 }),
+            laser: new THREE.MeshStandardMaterial({ color: 0xff0055, emissive: 0xff0055, emissiveIntensity: 4.0, transparent: true, opacity: 0.8 })
+        };
+
+        // --- ИНИЦИАЛИЗАЦИЯ ---
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            // Сцена
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(CONFIG.fogColor);
+            scene.fog = new THREE.Fog(CONFIG.fogColor, 20, 120);
+
+            // Камера
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+            camera.position.set(0, 5, 8);
+            camera.lookAt(0, 2, -10);
+
+            // Рендерер
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            container.appendChild(renderer.domElement);
+
+            // Освещение
+            const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
+            scene.add(ambientLight);
+
+            const hemiLight = new THREE.HemisphereLight(0x00aaff, 0x002244, 0.6);
+            scene.add(hemiLight);
+
+            const dirLight = new THREE.DirectionalLight(0xaaccff, 1.5);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 50;
+            dirLight.shadow.camera.left = -20;
+            dirLight.shadow.camera.right = 20;
+            dirLight.shadow.camera.top = 20;
+            dirLight.shadow.camera.bottom = -20;
+            scene.add(dirLight);
+
+            // Звездное небо
+            createStarfield();
+
+            // Загрузка модели игрока
+            loadPlayerModel();
+
+            // Начальные чанки
+            for (let i = 0; i < 5; i++) {
+                spawnChunk(-i * CONFIG.chunkLength);
+            }
+
+            // Обработчики событий
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('keydown', handleInput);
+            document.addEventListener('touchstart', handleTouch, { passive: false });
+            
+            document.getElementById('start-btn').addEventListener('click', startGame);
+            document.getElementById('restart-btn').addEventListener('click', resetGame);
+
+            clock = new THREE.Clock();
+            animate();
+        }
+
+        function createStarfield() {
+            const geometry = new THREE.BufferGeometry();
+            const count = 2000;
+            const positions = new Float32Array(count * 3);
+            for (let i = 0; i < count * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 200;
+                positions[i+1] = Math.random() * 100 + 10;
+                positions[i+2] = (Math.random() - 0.5) * 200 - 50;
+            }
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.PointsMaterial({ color: 0xffffff, size: 0.2, transparent: true, opacity: 0.8 });
+            starField = new THREE.Points(geometry, material);
+            scene.add(starField);
+        }
+
+        function loadPlayerModel() {
+            const loader = new GLTFLoader();
+            loader.load(
+                CONFIG.playerModelPath,
+                (gltf) => {
+                    playerModel = gltf.scene;
+                    setupPlayerModel();
+                },
+                undefined,
+                (error) => {
+                    console.warn('Модель player_game.glb не найдена, используется процедурный прототип.');
+                    playerModel = createFallbackPlayer();
+                    setupPlayerModel();
+                }
+            );
+        }
+
+        function createFallbackPlayer() {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1.5, 4, 8), materials.metalLight);
+            body.position.y = 1.25;
+            body.castShadow = true;
+            
+            const visor = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.3), materials.emissiveBlue);
+            visor.position.set(0, 1.8, -0.3);
+            
+            const jetpack = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.4), materials.metalDark);
+            jetpack.position.set(0, 1.2, 0.4);
+            
+            group.add(body, visor, jetpack);
+            return group;
+        }
+
+        function setupPlayerModel() {
+            // Вычисление bounding box для масштабирования и позиционирования
+            const box = new THREE.Box3().setFromObject(playerModel);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            
+            // Масштабирование до высоты ~2.0 юнита
+            const scaleFactor = 2.0 / size.y;
+            playerModel.scale.setScalar(scaleFactor);
+            
+            // Повторный расчет box после масштабирования
+            const scaledBox = new THREE.Box3().setFromObject(playerModel);
+            
+            // Смещение так, чтобы низ модели был на y=0 (сохраняем в playerBaseY)
+            state.playerBaseY = -scaledBox.min.y;
+            playerModel.position.y = state.playerBaseY;
+            state.playerY = state.playerBaseY;
+            
+            // Разворот модели лицом вперед (по оси -Z)
+            playerModel.rotation.y = Math.PI;
+            
+            // Включение теней для всех мешей
+            playerModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            
+            scene.add(playerModel);
+            
+            // Инициализация бокса коллизии игрока
+            playerBox = new THREE.Box3();
+        }
+
+        // --- ГЕНЕРАЦИЯ МИРА ---
+        function spawnChunk(zPosition) {
+            const chunkGroup = new THREE.Group();
+            chunkGroup.position.z = zPosition;
+
+            // 1. Дорожное полотно (металлическая обшивка)
+            const roadGeo = new THREE.BoxGeometry(12, 0.5, CONFIG.chunkLength);
+            const road = new THREE.Mesh(roadGeo, materials.metalDark);
+            road.position.y = -0.25;
+            road.receiveShadow = true;
+            chunkGroup.add(road);
+
+            // 2. Светодиодные разметки (3 полосы = 2 разделителя)
+            const lineGeo = new THREE.BoxGeometry(0.15, 0.1, CONFIG.chunkLength);
+            const line1 = new THREE.Mesh(lineGeo, materials.emissiveBlue);
+            line1.position.set(-CONFIG.laneWidth / 2, 0.05, 0);
+            chunkGroup.add(line1);
+
+            const line2 = new THREE.Mesh(lineGeo, materials.emissiveBlue);
+            line2.position.set(CONFIG.laneWidth / 2, 0.05, 0);
+            chunkGroup.add(line2);
+
+            // 3. Бордюры и кабели по краям
+            const bumperGeo = new THREE.BoxGeometry(1, 1.5, CONFIG.chunkLength);
+            const leftBumper = new THREE.Mesh(bumperGeo, materials.metalLight);
+            leftBumper.position.set(-6.5, 0.75, 0);
+            leftBumper.castShadow = true;
+            leftBumper.receiveShadow = true;
+            chunkGroup.add(leftBumper);
+
+            const rightBumper = new THREE.Mesh(bumperGeo, materials.metalLight);
+            rightBumper.position.set(6.5, 0.75, 0);
+            rightBumper.castShadow = true;
+            rightBumper.receiveShadow = true;
+            chunkGroup.add(rightBumper);
+
+            // 4. Процедурный декор (отсеки, антенны, солнечные батареи)
+            for (let i = 0; i < 6; i++) {
+                const side = Math.random() > 0.5 ? 1 : -1;
+                const x = side * (8 + Math.random() * 6);
+                const z = (Math.random() - 0.5) * CONFIG.chunkLength;
+                const decor = createProceduralDecor();
+                decor.position.set(x, 0, z);
+                chunkGroup.add(decor);
+            }
+
+            scene.add(chunkGroup);
+            state.chunks.push(chunkGroup);
+
+            // Спавн препятствий и монет в этом чанке (кроме самого первого)
+            if (zPosition < -20) {
+                spawnObstaclesInChunk(zPosition);
+            }
+        }
+
+        function createProceduralDecor() {
+            const group = new THREE.Group();
+            const type = Math.floor(Math.random() * 3);
+
+            if (type === 0) {
+                // Отсек станции с иллюминаторами
+                const hull = new THREE.Mesh(new THREE.BoxGeometry(4, 8, 4), materials.metalDark);
+                hull.position.y = 4;
+                hull.castShadow = true;
+                group.add(hull);
+                
+                // Иллюминаторы/терминалы
+                for (let i = 0; i < 3; i++) {
+                    const win = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.2), Math.random() > 0.5 ? materials.emissiveBlue : materials.emissiveRed);
+                    win.position.set(0, 3 + i * 2, 2.01);
+                    group.add(win);
+                }
+            } else if (type === 1) {
+                // Солнечная батарея
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 6), materials.metalLight);
+                pole.position.y = 3;
+                group.add(pole);
+                
+                const panel = new THREE.Mesh(new THREE.BoxGeometry(5, 0.2, 3), new THREE.MeshStandardMaterial({ color: 0x112244, roughness: 0.8, metalness: 0.5 }));
+                panel.position.y = 6;
+                panel.rotation.z = Math.PI / 6;
+                panel.castShadow = true;
+                group.add(panel);
+            } else {
+                // Лазерная стойка
+                const base = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 1), materials.metalDark);
+                base.position.y = 0.5;
+                group.add(base);
+                
+                const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 10), materials.emissiveBlue);
+                beam.position.y = 5;
+                group.add(beam);
+            }
+
+            return group;
+        }
+
+        function spawnObstaclesInChunk(zBase) {
+            const lanes = [-1, 0, 1];
+            // Перемешиваем полосы
+            lanes.sort(() => Math.random() - 0.5);
+            
+            // Спавним 1-2 препятствия на чанк
+            const count = 1 + Math.floor(Math.random() * 2);
+            
+            for (let i = 0; i < count; i++) {
+                const lane = lanes[i];
+                const x = lane * CONFIG.laneWidth;
+                const z = zBase + (Math.random() - 0.5) * (CONFIG.chunkLength * 0.6);
+                
+                if (Math.random() > 0.3) {
+                    // Препятствие
+                    const isHigh = Math.random() > 0.5;
+                    const obstacle = createObstacle(x, z, isHigh);
+                    scene.add(obstacle);
+                    state.obstacles.push(obstacle);
+                } else {
+                    // Монетка
+                    const coin = createCoin(x, z);
+                    scene.add(coin);
+                    state.coins.push(coin);
+                }
+            }
+        }
+
+        function createObstacle(x, z, isHigh) {
+            const group = new THREE.Group();
+            group.position.set(x, 0, z);
+            group.userData = { type: 'hazard', active: true };
+
+            if (isHigh) {
+                // Высокая лазерная перегородка (нужно обойти)
+                const frameL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3, 0.2), materials.metalDark);
+                frameL.position.set(-0.8, 1.5, 0);
+                const frameR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3, 0.2), materials.metalDark);
+                frameR.position.set(0.8, 1.5, 0);
+                const laser = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.5, 0.1), materials.laser);
+                laser.position.set(0, 1.5, 0);
+                
+                group.add(frameL, frameR, laser);
+                group.userData.box = new THREE.Box3().setFromObject(group);
+            } else {
+                // Низкий ящик с биоопасностью (можно перепрыгнуть)
+                const crate = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 2), materials.metalDark);
+                crate.position.y = 0.6;
+                crate.castShadow = true;
+                
+                // Био-эмблема (светящиеся полосы)
+                const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.2, 1), materials.emissiveGreen);
+                stripe1.position.y = 0.6;
+                const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(1, 0.2, 2.05), materials.emissiveGreen);
+                stripe2.position.y = 0.6;
+                
+                group.add(crate, stripe1, stripe2);
+                group.userData.box = new THREE.Box3().setFromObject(group);
+            }
+
+            return group;
+        }
+
+        function createCoin(x, z) {
+            const geometry = new THREE.SphereGeometry(0.6, 16, 16);
+            const coin = new THREE.Mesh(geometry, materials.coin);
+            coin.position.set(x, 1.5, z);
+            coin.castShadow = true;
+            coin.userData = { type: 'coin', active: true, rotSpeed: 2.0 + Math.random() };
+            coin.userData.box = new THREE.Box3().setFromObject(coin);
+            return coin;
+        }
+
+        // --- ЧАСТИЦЫ ---
+        function spawnExplosion(position) {
+            const particleCount = 30;
+            const geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+            
+            for (let i = 0; i < particleCount; i++) {
+                const mesh = new THREE.Mesh(geo, Math.random() > 0.5 ? materials.emissiveBlue : materials.emissiveRed);
+                mesh.position.copy(position);
+                mesh.position.x += (Math.random() - 0.5) * 2;
+                mesh.position.y += (Math.random() - 0.5) * 2 + 1;
+                mesh.position.z += (Math.random() - 0.5) * 2;
+                
+                const velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.5,
+                    Math.random() * 0.5,
+                    (Math.random() - 0.5) * 0.5
+                );
+                
+                scene.add(mesh);
+                state.particles.push({ mesh, velocity, life: 1.0 });
+            }
+        }
+
+        // --- УПРАВЛЕНИЕ ---
+        function handleInput(event) {
+            if (!state.isPlaying) return;
+
+            if (event.key === 'ArrowLeft' || event.key === 'a' || event.key === 'A' || event.key === 'ф' || event.key === 'Ф') {
+                if (state.lane > -1) state.lane--;
+            } else if (event.key === 'ArrowRight' || event.key === 'd' || event.key === 'D' || event.key === 'в' || event.key === 'В') {
+                if (state.lane < 1) state.lane++;
+            } else if (event.key === ' ' || event.key === 'ArrowUp' || event.key === 'w' || event.key === 'W' || event.key === 'ц' || event.key === 'Ц') {
+                if (!state.isJumping) {
+                    state.velocityY = CONFIG.jumpForce;
+                    state.isJumping = true;
+                }
+            }
+            
+            state.targetX = state.lane * CONFIG.laneWidth;
+        }
+
+        function handleTouch(event) {
+            if (!state.isPlaying) return;
+            const touchX = event.touches[0].clientX;
+            const screenWidth = window.innerWidth;
+            
+            if (touchX < screenWidth / 3) {
+                if (state.lane > -1) state.lane--;
+            } else if (touchX > (screenWidth / 3) * 2) {
+                if (state.lane < 1) state.lane++;
+            } else {
+                if (!state.isJumping) {
+                    state.velocityY = CONFIG.jumpForce;
+                    state.isJumping = true;
+                }
+            }
+            state.targetX = state.lane * CONFIG.laneWidth;
+        }
+
+        // --- ИГРОВАЯ ЛОГИКА ---
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            state.isPlaying = true;
+            state.score = 0;
+            state.speed = CONFIG.baseSpeed;
+            state.distance = 0;
+        }
+
+        function resetGame() {
+            document.getElementById('game-over-screen').classList.add('hidden');
+            
+            // Очистка сцены от старых объектов
+            state.obstacles.forEach(obj => scene.remove(obj));
+            state.coins.forEach(obj => scene.remove(obj));
+            state.particles.forEach(p => scene.remove(p.mesh));
+            
+            state.obstacles = [];
+            state.coins = [];
+            state.particles = [];
+            
+            // Сброс чанков
+            state.chunks.forEach(chunk => scene.remove(chunk));
+            state.chunks = [];
+            for (let i = 0; i < 5; i++) {
+                spawnChunk(-i * CONFIG.chunkLength);
+            }
+            
+            // Сброс игрока
+            state.lane = 0;
+            state.targetX = 0;
+            state.playerY = state.playerBaseY;
+            state.velocityY = 0;
+            state.isJumping = false;
+            if (playerModel) {
+                playerModel.position.x = 0;
+                playerModel.position.y = state.playerBaseY;
+            }
+            
+            state.score = 0;
+            state.speed = CONFIG.baseSpeed;
+            state.distance = 0;
+            state.isPlaying = true;
+            
+            updateUI();
+        }
+
+        function gameOver() {
+            state.isPlaying = false;
+            if (playerModel) {
+                spawnExplosion(playerModel.position);
+                playerModel.visible = false;
+            }
+            document.getElementById('final-score').textContent = Math.floor(state.score);
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = Math.floor(state.score);
+            document.getElementById('speed').textContent = Math.floor(state.speed * 3.6); // м/с в км/ч
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- ГЛАВНЫЙ ЦИКЛ ---
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const delta = Math.min(clock.getDelta(), 0.1);
+            
+            if (state.isPlaying) {
+                // Движение вперед (фактически двигаем игрока по -Z, камера следует)
+                const moveDistance = state.speed * delta;
+                state.distance += moveDistance;
+                state.score += moveDistance * 0.1;
+                state.speed = Math.min(CONFIG.maxSpeed, state.speed + CONFIG.acceleration * delta);
+                
+                if (playerModel) {
+                    playerModel.position.z -= moveDistance;
+                    
+                    // Плавное перемещение между полосами
+                    playerModel.position.x += (state.targetX - playerModel.position.x) * 10 * delta;
+                    
+                    // Физика прыжка
+                    state.velocityY -= CONFIG.gravity;
+                    state.playerY += state.velocityY;
+                    
+                    if (state.playerY <= state.playerBaseY) {
+                        state.playerY = state.playerBaseY;
+                        state.velocityY = 0;
+                        state.isJumping = false;
+                    }
+                    
+                    playerModel.position.y = state.playerY;
+                    
+                    // Наклон модели при движении в сторону
+                    const lean = (playerModel.position.x - state.targetX) * -0.1;
+                    playerModel.rotation.z = lean;
+                    playerModel.rotation.y = Math.PI + lean * 0.5;
+                }
+                
+                // Камера следует за игроком
+                camera.position.z = playerModel ? playerModel.position.z + 8 : 8;
+                camera.position.x += (playerModel.position.x * 0.3 - camera.position.x) * 5 * delta;
+                
+                // Обновление бокса коллизии игрока
+                if (playerModel) {
+                    playerBox.setFromCenterAndSize(
+                        new THREE.Vector3(playerModel.position.x, state.playerY + 1, playerModel.position.z),
+                        new THREE.Vector3(1.0, 2.0, 1.0)
+                    );
+                }
+                
+                // Управление чанками
+                const playerZ = playerModel ? playerModel.position.z : 0;
+                if (state.chunks.length > 0) {
+                    const firstChunk = state.chunks[0];
+                    if (firstChunk.position.z > playerZ + CONFIG.chunkLength) {
+                        scene.remove(firstChunk);
+                        state.chunks.shift();
+                        
+                        const lastChunkZ = state.chunks[state.chunks.length - 1].position.z;
+                        spawnChunk(lastChunkZ - CONFIG.chunkLength);
+                    }
+                }
+                
+                // Обновление препятствий и коллизии
+                for (let i = state.obstacles.length - 1; i >= 0; i--) {
+                    const obs = state.obstacles[i];
+                    if (obs.position.z > playerZ + 10) {
+                        scene.remove(obs);
+                        state.obstacles.splice(i, 1);
+                        continue;
+                    }
+                    
+                    if (obs.userData.active) {
+                        // Обновляем бокс препятствия (на случай анимации, хотя здесь статика)
+                        obs.userData.box.setFromObject(obs);
+                        
+                        if (playerBox.intersectsBox(obs.userData.box)) {
+                            gameOver();
+                        }
+                    }
+                }
+                
+                // Обновление монет
+                for (let i = state.coins.length - 1; i >= 0; i--) {
+                    const coin = state.coins[i];
+                    if (coin.position.z > playerZ + 10) {
+                        scene.remove(coin);
+                        state.coins.splice(i, 1);
+                        continue;
+                    }
+                    
+                    if (coin.userData.active) {
+                        coin.rotation.y += coin.userData.rotSpeed * delta;
+                        coin.userData.box.setFromObject(coin);
+                        
+                        if (playerBox.intersectsBox(coin.userData.box)) {
+                            coin.userData.active = false;
+                            coin.visible = false;
+                            state.score += 50;
+                        }
+                    }
+                }
+                
+                updateUI();
+            }
+            
+            // Обновление частиц (работает даже после game over для эффекта взрыва)
+            for (let i = state.particles.length - 1; i >= 0; i--) {
+                const p = state.particles[i];
+                p.life -= delta * 1.5;
+                p.velocity.y -= 0.02; // гравитация частиц
+                
+                p.mesh.position.add(p.velocity);
+                p.mesh.rotation.x += delta * 5;
+                p.mesh.rotation.y += delta * 5;
+                p.mesh.scale.setScalar(p.life);
+                
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    state.particles.splice(i, 1);
+                }
+            }
+            
+            // Анимация звездного поля (параллакс)
+            if (starField) {
+                starField.position.z = playerModel ? playerModel.position.z - 50 : -50;
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // Запуск
+        init();
+    </script>
+</body>
+</html>
